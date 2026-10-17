@@ -25,7 +25,7 @@ The eight core fields of section 9.1 (section 10.1 in the draft) are `contract_s
 ## Coverage limits
 
 - Only the eight core fields are computed. The informative fields of 9.4 and signed settlement packaging are out of scope.
-- One guard remains. A supplied parent whose grant carries `approval_policy.approvers` gets UNASSESSED fields (4.3.1 rule 14, note B5). None of the 117 vectors reaches it.
+- A supplied parent whose grant carries `approval_policy.approvers` is outside core v0 (section 1, and 4.3.1 rule 14 says neither grant carries them). The checker reports UNASSESSED fields for it (note B5). None of the 117 vectors reaches it.
 - `impl/AMBIGUITIES.md` records the reading the code took wherever the text left a choice: 25 notes for the original text (A1 to A25, most now answered in revision 0.2) and 10 for revision 0.2 (B1 to B10). They are implementation notes, not confirmed specification defects.
 
 ## Reproduce
@@ -42,7 +42,17 @@ python3 impl/run_all.py         # writes out/<vector>.json (overwrites the froze
 python3 compare/compare.py . comparison-r02.json   # exits 1 on any disagreement, UNASSESSED field or missing output
 ```
 
-The original 76 use `./scripts/build_input.sh` (corpus at `4100d52`) in place of the first two lines. `compare/comparison_as_run.json` and `compare/comparison-r02.json` are the comparison results as first run. `compare/compare_as_run.py` is the first comparison script, which reports disagreements but always exits 0, so `compare/compare.py` replaces it as the check.
+To run the current checker on the original 76-vector corpus, use:
+
+```
+./scripts/build_input.sh
+python3 impl/run_all.py
+python3 compare/compare.py . comparison-original.json
+```
+
+The 29-test primitive suite above requires the revision 0.2 input fixtures. Rebuild that input before running the full suite again.
+
+`compare/comparison_as_run.json` and `compare/comparison-r02.json` are the comparison results as first run. `compare/compare_as_run.py` is the first comparison script, which reports disagreements but always exits 0, so `compare/compare.py` replaces it as the check.
 
 The corpus itself is not copied here. The build scripts fetch it from the pinned commit.
 
