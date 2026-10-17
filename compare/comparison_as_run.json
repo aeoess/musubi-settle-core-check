@@ -1,0 +1,458 @@
+[
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "real_cross_record_names_other_contract"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "real_p31_anchor_below_checkpoint"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "real_p31_anchor_missing"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "real_p31_anchor_names_other_height"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "real_p31_bad_contract_and_bad_view"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "real_p31_baseline"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "real_p31_block_hash_trailing_newline"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "real_p31_contract_bad_contractor_signature"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "real_p31_contract_bad_principal_signature"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "real_p31_copy_with_junk_signature_entry"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "real_p31_proof_operand_changed"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "real_p31_proof_operand_trailing_newline"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "real_p31_proof_operand_trailing_newline_beside_good"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "real_p31_same_record_twice"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "real_p31_tip_exactly_deep_enough"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "real_p31_tip_too_shallow"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "real_p31_two_anchorings_one_body"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "real_p31_view_missing_anchor_block"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "real_p31_view_without_checkpoint"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "real_r2_baseline"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "real_r2_batch_leg_extra_empty_append"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "real_r2_hexlify_not_leading"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_action_name_not_canonical"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_action_name_trailing_newline"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_action_not_authorized"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_after_expiry"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_approval_label_bound"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_approval_nonce_trailing_newline"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_approval_signed_by_contractor"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_at_expiry_height"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_baseline"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_batch_leg_kind_mismatch"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_batch_leg_listed"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_batch_leg_not_listed"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_bond_amount_string"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_bond_empty_list"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_cited_walk_not_strict"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_conditional_approval_earlier_block"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_conditional_approval_expired"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_conditional_approval_reused"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_conditional_approval_same_block_other_record"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_conditional_approved_same_record"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_conditional_without_approval"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_delegated_to_object"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_delegation_not_allowed"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_delivery_ack_window"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_earlier_terms_record_bad_anchor"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_exec_signed_by_stranger"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_exec_unsigned"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_float_in_signed_body"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_label_only_reference"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_nenrin_check_reads_rejected_record"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_nenrin_required_without_ref"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_nenrin_walk_names_other_contract"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_nothing_to_settle"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_outcome_error_does_not_excuse"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_parent_not_supplied"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_parent_supplied_narrows"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_parent_widened"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_payload_digest_mismatch"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_prohibited_action"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_record_field_outside_schema"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_revocation_by_non_principal"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_revocation_irrevocable_grant"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_revocation_signed_by_contractor"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_revoked_same_block"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_signature_s_plus_l"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_strict_signature_beside_malleated"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_tie_policy_record_sha256"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_tip_too_shallow"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_unsafe_integer_in_signed_body"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_unsigned_copies_anchored_first"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_unsigned_float_beside_good"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_view_header_trailing_newline"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_witness_attests_prohibited"
+ },
+ {
+  "all_eight_agree": true,
+  "diffs": [],
+  "expected_extra_keys": [],
+  "vector": "synth_witness_key_is_principal_key"
+ }
+]
