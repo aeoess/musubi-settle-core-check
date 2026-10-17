@@ -89,3 +89,41 @@ It is a conformance problem (a charge if contractor signed), and in the walk it 
 - A10: any parent case other than identical or authorized-widened grants. The guard reports UNASSESSED there instead of guessing.
 - synth_signature_s_plus_l: whether the record is `rejected` or `signature_not_strict` depends on whether OpenSSL's Ed25519 verify accepts S + L. I call the same library and version the spec names (cryptography 50.0.1), which returned false, so my implementation gives `rejected`.
 - A2: floats are written with Python `repr`. A JavaScript writer would differ, but the reference is Python.
+
+## Revision 0.2
+
+Written against SETTLE_CORE_v0.md and NOTES.md at horizon-shield commit e1c91215 (revision 0.2), the vector inputs, and nothing else. No expected output and no reference code was read before the freeze.
+
+Superseded entries above. The revised text now states these, and the code follows the text: A1 (9.1, contract_sha256 null for a non-object contract), A3 (2.2, see B1), A6 (4.1 rule 4, Python `str.strip()`), A7 (4.1 rule 10, `delegation` must be `{"allowed": [...]}`, `ordering: {}` accepted), A9 (6.0 and 10.4, only `sig_b64` is verified, each key checked for strictness on its own), A10 (4.3.1, full parent narrowing, the old guard is gone), A12 and A15 (2.2 and 7.6, `NaN`, `Infinity`, `-Infinity` are non-integer numbers, not parse errors), A16 (5.1 rule 9), A20 (section 1, "carries"), A22 (10.1, a copy dropped by 6.4 no longer names its revocation). The other A entries stand.
+
+New choices where the revised text still leaves one:
+
+B1. 2.2, the 4300 digit limit (A3).
+The parser refuses an integer token whose digits, not counting a leading `-`, number more than 4300. That input then gives no settlement, and run_all.py writes every field as UNASSESSED. This matches Python's default `int()` limit, which excludes the sign. A token with a fraction or exponent has no limit, as in Python's reader. The implementation no longer calls `sys.set_int_max_str_digits` at all, so importing it does not change integer parsing for any other module in the process (NOTES N14 names this trap). `canonical()` lets the interpreter's default limit raise and turns that into "cannot be digested". 6.0 says such a record is "set aside with reason `record_not_strict`", while 9.2 says it has no record_sha256 and so no disposition. The code gives it no disposition and adds no reason. Since 2.2 now stops the reader first, this branch is reachable only when a caller passes Python integers directly. No vector reaches it.
+
+B2. 3.1, how a NaN or an infinity is written in canonical form.
+2.2 now reads these tokens as numbers, and 6.0 needs a record_sha256 and signing bytes for a record holding one. 3.1 defines only integers, and N4 says floats are written with Python `repr`, which would give `nan`. The code writes `NaN`, `Infinity` and `-Infinity` instead, and finite floats with `repr` as before. Evidence, from an input file only: the contractor signature in `vectors/synth_nan_in_signed_body/events/e00.json` verifies over the signing bytes with `NaN` and fails with `nan` or `null`. This was checked before the freeze. The infinities follow by analogy, and no vector holds one.
+
+B3. 4.1 rule 10, `delegation: {"allowed": null}`.
+The text says "exactly one key, `allowed`, a list of non-empty strings". A null `allowed` is not such a list, so the contract is refused. No vector has it.
+
+B4. 4.3.1 rule 6, comparing `requires`.
+A missing `requires` is null on either side (the text says so). Present values are compared with exact equality. After 4.1 rule 10 they are strings or null, so `null` never equals `""`.
+
+B5. 4.3.1 rule 14 and section 1, a parent that carries pinned approvers.
+Section 1 scopes the contract, not the parent. 4.3.1 says rule 14 never applies in core v0 because neither grant carries approvers, but a supplied parent could. When the parent carries `grant.approval_policy.approvers` (present, not null, not `[]`), both contracts pass 4.1, and the parent check has not already failed on another rule, the code reports verdict, status, bond_outcome, deviation_codes and underspecified_reasons as UNASSESSED. This is the only remaining UNASSESSED guard for parents. None of the 117 vectors reaches it.
+
+B6. 10.1, "a copy of that revocation that is still in the input after 6.4".
+Read as the records kept by 6.0 and not dropped by 6.4, in the final pass after the 6.6 reruns. That set includes the accepted revocation itself. A copy set aside or rejected in 6.0, or rejected in 6.6, does not name it.
+
+B7. Section 1, which `approvers` values are carried.
+The text says `null` or `[]` refuses the contract in 4.1. The code reads this as an exception to "carried": those two values stay in scope and the door refuses them. Any other value of `approvers` that is not null (including `{}`, `""` or `0`) is carried, so the input is out of scope.
+
+B8. 2.2, which tokens count as NaN and infinity.
+Exactly `NaN`, `Infinity` and `-Infinity`, case sensitive, as Python's `json` module reads them. `nan` or `+Infinity` is a parse error. A number token whose value overflows a double (for example `1e400`) becomes an infinity, as in Python. Both are non-integer numbers, so a value holding one is not strict and a contract holding one fails 4.1 rule 11.
+
+B9. 4.1 rule 4, the order of the steps.
+Strip with `str.strip()` (every character for which Python's `str.isspace()` is true, at both ends), then lowercase, then remove trailing dots. Whitespace left inside the name after the dots are removed still refuses the domain.
+
+B10. 4.3.1 rule 12, equality of `privacy` and `ordering`.
+Exact JSON value equality, with types compared (an object is equal only to an object with the same keys and equal values). `{}` and `{"same_height": null}` are therefore unequal, as the text says.

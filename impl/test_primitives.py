@@ -130,5 +130,234 @@ class Points(unittest.TestCase):
         self.assertEqual(sc.b64_canonical("QQ==", None), b"A")
 
 
+# ------------------------------------------------------------ revision 0.2
+
+VEC = os.path.join(ROOT, "input", "vectors")
+
+
+def load_vec(vid, name):
+    with open(os.path.join(VEC, vid, name), "rb") as f:
+        return sc.parse_json(f.read())
+
+
+def base_grant():
+    """A parent grant that sets every axis, used for 4.3.1 rule tests."""
+    return {
+        "authorized_actions": ["read", "write"],
+        "prohibited_actions": ["delete"],
+        "conditional": [{"action": "refund", "requires": "principal_approval"}],
+        "delegation": {"allowed": ["agent-a"]},
+        "data_access": ["db1", "db2"],
+        "max_hops": 3,
+        "privacy": "private",
+        "revocation": {"effective_at": "delivery_ack", "ack_window": 10},
+        "finality": {"depth": 6, "max_target_bits": "207fffff"},
+        "witnesses": [{"name": "w", "public_key_ed25519_b64": "A" * 43 + "="}],
+        "expiry_height": 900000,
+        "ordering": {"same_height": "conservative"},
+        "approval_policy": {"allow_unscoped": False},
+    }
+
+
+def child_of(p, **chg):
+    import copy
+    c = copy.deepcopy(p)
+    c["max_hops"] = p["max_hops"] - 1
+    for k, v in chg.items():
+        if v is KeyError:
+            c.pop(k, None)
+        else:
+            c[k] = v
+    return c
+
+
+class Rev02Reading(unittest.TestCase):
+    def test_nan_infinity_are_numbers_2_2(self):
+        v = sc.parse_json('{"a":NaN,"b":Infinity,"c":-Infinity}')
+        self.assertTrue(v["a"] != v["a"])
+        self.assertEqual(v["b"], float("inf"))
+        self.assertEqual(v["c"], float("-inf"))
+        self.assertFalse(sc.is_strict_value(v))
+        self.assertEqual(sc.canonical(v), b'{"a":NaN,"b":Infinity,"c":-Infinity}')  # [B2]
+        self.assertFalse(sc.numbers_ok_contract({"x": float("nan")}))
+
+    def test_long_integer_token_2_2(self):
+        import sys
+        self.assertEqual(sys.get_int_max_str_digits(), 4300)  # no global change [B1]
+        self.assertEqual(len(str(sc.parse_json("1" * 4300))), 4300)
+        sc.parse_json("-" + "1" * 4300)
+        with self.assertRaises(sc.InputError):
+            sc.parse_json("1" * 4301)
+        with self.assertRaises(sc.InputError):
+            sc.parse_json("[" + "9" * 5000 + "]")
+        sc.parse_json("1" + "0" * 5000 + ".5")  # a non-integer token has no digit limit
+        with self.assertRaises(sc.CanonError):
+            sc.canonical(10 ** 4300)
+
+    def test_contract_sha256_null_for_non_object_9_1(self):
+        self.assertIsNone(sc.contract_sha256([1, 2]))
+        out = sc.settle([1, 2], [], {})
+        self.assertIsNone(out["contract_sha256"])
+        self.assertEqual(out["underspecified_reasons"], ["contract_not_verified"])
+
+    def test_domain_strip_4_1_rule_4(self):
+        self.assertEqual(sc.norm_domain("\tPrincipal.Example.com..\n"), "principal.example.com")
+        self.assertEqual(sc.norm_domain("\u00a0a.b"), "a.b")  # str.strip() removes NBSP
+        self.assertIsNone(sc.norm_domain("a .b"))
+        self.assertTrue(sc.door(load_vec("synth_domain_leading_tab", "contract.json")))
+
+    def test_delegation_and_ordering_objects_4_1_rule_10(self):
+        self.assertFalse(sc.door(load_vec("synth_delegation_empty_object", "contract.json")))
+        self.assertTrue(sc.door(load_vec("synth_ordering_empty_object", "contract.json")))
+        c = load_vec("synth_ordering_empty_object", "contract.json")
+        c["grant"]["delegation"] = {"allowed": None}
+        self.assertFalse(sc.door(c))  # [B3]
+
+    def test_carried_keys_section_1(self):
+        self.assertFalse(sc.out_of_scope({"grant": {"limits": None}}))
+        self.assertTrue(sc.out_of_scope({"grant": {"limits": {}}}))
+        self.assertFalse(sc.out_of_scope({"requirements": {"admission": None}}))
+        self.assertTrue(sc.out_of_scope({"requirements": {"admission": {}}}))
+        self.assertTrue(sc.out_of_scope({"requirements": {"spine": None}}))
+        self.assertTrue(sc.out_of_scope({"requirements": {"convergence": None}}))
+        self.assertFalse(sc.out_of_scope({"grant": {"approval_policy": {"approvers": []}}}))
+        self.assertFalse(sc.out_of_scope({"grant": {"approval_policy": {"approvers": None}}}))
+        self.assertTrue(sc.out_of_scope({"grant": {"approval_policy": {"approvers": ["x"]}}}))
+        c = load_vec("synth_ordering_empty_object", "contract.json")
+        c["grant"]["approval_policy"] = {"approvers": []}
+        self.assertFalse(sc.door(c))
+
+    def test_view_not_strict_only_for_object_with_list_5_1_rule_9(self):
+        c = load("c.AB.json")
+        for v in ([1], {"headers": {}}, {"headers": "x"}, None):
+            ok, strict9, _, _ = sc.verify_view(c, v)
+            self.assertFalse(ok)
+            self.assertTrue(strict9)
+        ok, strict9, _, _ = sc.verify_view(c, {"headers": [{"height": 1.5, "hex": "00"}]})
+        self.assertFalse(ok)
+        self.assertFalse(strict9)
+
+    def test_approval_keys_6_0_and_10_4(self):
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        import base64
+        sk = Ed25519PrivateKey.from_private_bytes(bytes(range(32)))
+        pk = base64.b64encode(sk.public_key().public_bytes_raw()).decode()
+        csha = "ab" * 32
+        ap = {"contract_sha256": csha, "action": "refund", "valid_until_height": 5,
+              "nonce": "cd" * 16, "single_use": True}
+        msg = b"a2a-approval-v2\n" + sc.canonical(ap)
+        sig = sk.sign(msg)
+        good = base64.b64encode(sig).decode()
+        s = int.from_bytes(sig[32:], "little") + sc.L
+        mal = base64.b64encode(sig[:32] + s.to_bytes(32, "little")).decode()
+        self.assertEqual(sc.classify_approval(dict(ap, sig_b64=good), pk, csha, "x", None), "counted")
+        self.assertEqual(sc.classify_approval(dict(ap, signature=good), pk, csha, "x", None), "forged")
+        self.assertEqual(sc.classify_approval(dict(ap, sig_b64=good, signature=good), pk, csha, "x", None), "counted")
+        rec = {"schema": "a2a-execution-v0", "performed_actions": [], "approvals": [dict(ap, sig_b64=good, signature=mal)]}
+        self.assertFalse(sc.body_strict(sc.Rec(rec, "x")))
+        rec["approvals"] = [dict(ap, sig_b64=mal, signature=good)]
+        self.assertFalse(sc.body_strict(sc.Rec(rec, "x")))
+        rec["approvals"] = [dict(ap, sig_b64=good, signature=good)]
+        self.assertTrue(sc.body_strict(sc.Rec(rec, "x")))
+
+
+class ParentNarrowing(unittest.TestCase):
+    """4.3.1 rules, one per test where possible."""
+
+    def v(self, c, p):
+        return sc.grant_subset_violations(c, p)
+
+    def test_baseline_within(self):
+        p = base_grant()
+        self.assertEqual(self.v(child_of(p), p), [])
+
+    def test_rule_4_max_hops(self):
+        p = base_grant()
+        self.assertIn(4, self.v(child_of(p, max_hops=3), p))  # copying is not within
+        self.assertIn(4, self.v(child_of(p, max_hops=KeyError), p))
+        p0 = dict(p, max_hops=0)
+        self.assertIn(4, self.v(child_of(p0, max_hops=0), p0))
+        q = dict(p)
+        q.pop("max_hops")
+        self.assertEqual(self.v(dict(child_of(p), max_hops=99), q), [])
+
+    def test_rules_1_2_3_5(self):
+        p = base_grant()
+        self.assertIn(1, self.v(child_of(p, authorized_actions=["read", "admin"]), p))
+        self.assertIn(2, self.v(child_of(p, prohibited_actions=[]), p))
+        self.assertIn(3, self.v(child_of(p, data_access=["db3"]), p))
+        self.assertEqual(self.v(child_of(p, data_access=KeyError), p), [])
+        self.assertEqual(self.v(child_of(p, data_access=None), p), [])
+        self.assertIn(5, self.v(child_of(p, delegation={"allowed": ["agent-b"]}), p))
+
+    def test_rule_6_conditional(self):
+        p = base_grant()
+        self.assertEqual(self.v(child_of(p, conditional=[]), p), [])  # child cannot do refund
+        self.assertIn(6, self.v(child_of(p, conditional=[], authorized_actions=["read", "refund"]), p))
+        self.assertIn(6, self.v(child_of(p, conditional=[{"action": "refund"}]), p))  # requires differs
+        self.assertEqual(self.v(child_of(p, conditional=[], prohibited_actions=["delete", "refund"]), p), [])
+        q = dict(p, conditional=[{"action": "refund"}])
+        self.assertEqual(self.v(child_of(q, conditional=[{"action": "refund", "requires": None}]), q), [])
+
+    def test_rule_7_and_8(self):
+        p = base_grant()
+        self.assertIn(7, self.v(child_of(p, conditional=p["conditional"] + [{"action": "pay"}]), p))
+        self.assertEqual(self.v(child_of(p, conditional=p["conditional"] + [{"action": "write"}]), p), [])
+        self.assertIn(8, self.v(child_of(p, expiry_height=900001), p))
+        self.assertIn(8, self.v(child_of(p, expiry_height=KeyError), p))
+        self.assertEqual(self.v(child_of(p, expiry_height=1), p), [])
+
+    def test_rule_9_revocation(self):
+        p = base_grant()
+        self.assertEqual(self.v(child_of(p, revocation={"effective_at": "anchor"}), p), [])
+        self.assertIn(9, self.v(child_of(p, revocation={"effective_at": "delivery_ack", "ack_window": 11}), p))
+        self.assertIn(9, self.v(child_of(p, revocation={"effective_at": "delivery_ack"}), p))
+        self.assertIn(9, self.v(child_of(p, revocation=KeyError), p))
+        pa = dict(p, revocation={"effective_at": "anchor"})
+        self.assertIn(9, self.v(child_of(pa, revocation={"effective_at": "delivery_ack", "ack_window": 1}), pa))
+        pn = dict(p, revocation={"effective_at": "delivery_ack"})
+        self.assertEqual(self.v(child_of(pn, revocation={"effective_at": "delivery_ack", "ack_window": 99}), pn), [])
+
+    def test_rule_10_finality(self):
+        p = base_grant()
+        self.assertEqual(self.v(child_of(p, finality={"depth": 7, "max_target_bits": "1d00ffff"}), p), [])
+        self.assertIn(10, self.v(child_of(p, finality={"depth": 5, "max_target_bits": "207fffff"}), p))
+        self.assertIn(10, self.v(child_of(p, finality={"depth": 6}), p))
+        self.assertIn(10, self.v(child_of(p, finality={"max_target_bits": "207fffff"}), p))
+        self.assertIn(10, self.v(child_of(p, finality=KeyError), p))
+
+    def test_rule_11_witness_keys(self):
+        p = base_grant()
+        k = p["witnesses"][0]["public_key_ed25519_b64"]
+        self.assertEqual(self.v(child_of(p, witnesses=[{"name": "other", "public_key_ed25519_b64": k}]), p), [])
+        self.assertIn(11, self.v(child_of(p, witnesses=[]), p))
+        self.assertIn(11, self.v(child_of(p, witnesses=[{"name": "w", "public_key_ed25519_b64": "B" * 43 + "="}]), p))
+
+    def test_rule_12_privacy_ordering(self):
+        p = base_grant()
+        self.assertIn(12, self.v(child_of(p, privacy="public"), p))
+        self.assertIn(12, self.v(child_of(p, ordering=KeyError), p))
+        q = dict(p, ordering={"same_height": None})
+        self.assertIn(12, self.v(child_of(q, ordering={}), q))
+        r = dict(p, ordering={})
+        self.assertIn(12, self.v(child_of(r, ordering={"same_height": None}), r))
+        s = dict(p)
+        s.pop("privacy")
+        self.assertEqual(self.v(child_of(s, privacy="anything"), s), [])
+
+    def test_rule_13_allow_unscoped(self):
+        p = base_grant()
+        self.assertIn(13, self.v(child_of(p, approval_policy={"allow_unscoped": True}), p))
+        pt = dict(p, approval_policy={"allow_unscoped": True})
+        self.assertEqual(self.v(child_of(pt, approval_policy={"allow_unscoped": True}), pt), [])
+
+    def test_parent_contract_id_4_3_1(self):
+        child = load_vec("synth_parent_full_baseline", "contract.json")
+        parent = load_vec("synth_parent_full_baseline", "parent.json")
+        self.assertTrue(sc.door(child, parent, with_parent=True))
+        c2 = dict(child, parent_contract={})
+        self.assertFalse(sc.door(c2, parent, with_parent=True))  # missing contract_id fails
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

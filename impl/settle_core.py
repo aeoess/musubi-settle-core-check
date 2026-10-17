@@ -1,5 +1,6 @@
 """Independent implementation of MUSUBI settle core v0, written only from
-SETTLE_CORE_v0.md and NOTES.md. Standard library plus `cryptography` (Ed25519).
+SETTLE_CORE_v0.md and NOTES.md (revision 0.2, horizon-shield e1c91215).
+Standard library plus `cryptography` (Ed25519).
 
 Section numbers in comments refer to SETTLE_CORE_v0.md. Choices made where the
 text is ambiguous are listed in AMBIGUITIES.md with the tag [Ax].
@@ -13,12 +14,15 @@ import sys
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
-sys.set_int_max_str_digits(0)  # parse any integer; canonical form limits it [A3]
+# [A3][B1] No sys.set_int_max_str_digits call: the interpreter's default limit
+# (4300 digits) is left alone for every module in the process. The parser
+# refuses longer integer tokens itself (2.2), and canonical() turns the
+# interpreter's ValueError into CanonError.
 sys.setrecursionlimit(max(sys.getrecursionlimit(), 10000))
 
 SAFE = 2 ** 53 - 1
 MAX_DEPTH = 512
-INT_DIGIT_LIMIT = 4300  # [A3] the reference is Python; its default str(int) limit
+INT_DIGIT_LIMIT = 4300  # [A3] 2.2: an integer token longer than this is an error
 
 RECORD_SCHEMAS = {
     "a2a-execution-v0": ("execution", b"a2a-execution-v0\n"),
@@ -105,6 +109,16 @@ class _Parser:
         if t.startswith("null", self.i):
             self.i += 4
             return None
+        # 2.2 (rev 0.2) [A15][A12]: these tokens are read as non-integer numbers
+        if t.startswith("NaN", self.i):
+            self.i += 3
+            return float("nan")
+        if t.startswith("Infinity", self.i):
+            self.i += 8
+            return float("inf")
+        if t.startswith("-Infinity", self.i):
+            self.i += 9
+            return float("-inf")
         return self.number()
 
     def number(self):
@@ -114,6 +128,9 @@ class _Parser:
         tok = m.group(0)
         self.i = m.end()
         if m.group(2) is None and m.group(3) is None:
+            # 2.2 (rev 0.2) [A3]: an integer token over 4300 digits is an error
+            if len(m.group(1)) > INT_DIGIT_LIMIT:
+                self.err("integer token longer than 4300 digits")
             return int(tok)
         return float(tok)
 
@@ -272,14 +289,24 @@ def _canon(v, out, depth):
     elif v is False:
         out.append("false")
     elif is_int(v):
-        if len(str(abs(v))) > INT_DIGIT_LIMIT:
+        try:
+            out.append(str(v))  # default interpreter limit, 4300 digits [A3][B1]
+        except ValueError:
             raise CanonError("integer too long to write out")
-        out.append(str(v))
     elif isinstance(v, float):
-        # [A2] not defined by 3.1; NOTES N4 says the reference writes repr()
-        if v != v or v in (float("inf"), float("-inf")):
-            raise CanonError("non-finite number")
-        out.append(repr(v))
+        # [A2] not defined by 3.1; NOTES N4 says the reference writes repr().
+        # [B2] NaN and the infinities are now numbers (2.2). They are written
+        # NaN, Infinity, -Infinity (the tokens 2.2 reads), not repr's nan/inf:
+        # the contractor signature in synth_nan_in_signed_body/events/e00.json
+        # verifies only over that form.
+        if v != v:
+            out.append("NaN")
+        elif v == float("inf"):
+            out.append("Infinity")
+        elif v == float("-inf"):
+            out.append("-Infinity")
+        else:
+            out.append(repr(v))
     elif isinstance(v, str):
         _canon_str(v, out)
     elif isinstance(v, list):
@@ -327,6 +354,8 @@ def contract_signing_bytes(contract):
 
 
 def contract_sha256(contract):
+    if not isinstance(contract, dict):
+        return None  # 9.1 (rev 0.2) [A1]
     return sha256hex(contract_signing_bytes(contract))
 
 
@@ -509,7 +538,7 @@ GRANT_KEYS = {"authorized_actions", "prohibited_actions", "conditional", "delega
 def norm_domain(d):
     if not isinstance(d, str):
         return None
-    d = d.lower().strip(" ")  # [A6]
+    d = d.strip().lower()  # 4.1 rule 4 (rev 0.2) [A6]: Python str.strip(), then lowercase
     d = d.rstrip(".")
     if not d or any(c in d for c in "/@: "):
         return None
@@ -599,9 +628,8 @@ def door(c, parent=None, with_parent=False):
             return False
     v = g.get("delegation")
     if v is not None:
-        if not isinstance(v, dict) or any(k != "allowed" for k in v):
-            return False
-        if "allowed" in v and not list_of_nonempty_str(v["allowed"]):  # [A7]
+        # 4.1 rule 10 (rev 0.2) [A7][B3]: exactly the key `allowed`, a list of non-empty strings
+        if not isinstance(v, dict) or set(v) != {"allowed"} or not list_of_nonempty_str(v["allowed"]):
             return False
     v = g.get("conditional")
     if v is not None:
@@ -653,6 +681,9 @@ def door(c, parent=None, with_parent=False):
             return False
         if "allow_unscoped" in v and not isinstance(v["allow_unscoped"], bool):
             return False
+        # section 1 (rev 0.2) [A20]: approvers set to null or [] refuses the contract
+        if "approvers" in v and (v["approvers"] is None or (isinstance(v["approvers"], list) and not v["approvers"])):
+            return False
     v = g.get("revocation")
     if v is not None:
         if not isinstance(v, dict) or v.get("effective_at") not in ("anchor", "delivery_ack"):
@@ -700,52 +731,166 @@ def door(c, parent=None, with_parent=False):
     if not all(good.values()):
         return False
     if with_parent:
+        # 4.3.1: parent_contract is an object whose contract_id equals the parent's
+        # (a missing contract_id fails), and the child grant is within the parent's
         pc = c.get("parent_contract")
-        if not isinstance(pc, dict) or not isinstance(parent, dict):
+        if not isinstance(pc, dict) or not isinstance(parent, dict) or "contract_id" not in pc:
             return False
         if pc.get("contract_id") != parent.get("contract_id"):
             return False
-        ok, _certain = grant_subset(c.get("grant"), parent.get("grant"))
-        if not ok:
+        if not grant_subset(c.get("grant"), parent.get("grant")):
             return False
     return True
 
 
+def _has_int(d, k):
+    return isinstance(d, dict) and k in d and is_int(d[k])
+
+
+def _lst(d, k):
+    """4.3.1: a list that is absent or null counts as empty."""
+    v = d.get(k) if isinstance(d, dict) else None
+    return v if isinstance(v, list) else []
+
+
+def _sets(d, k):
+    """4.3.1: "sets" a key means present with a value other than null."""
+    return isinstance(d, dict) and k in d and d[k] is not None
+
+
+def _obj(d, k):
+    v = d.get(k) if isinstance(d, dict) else None
+    return v if isinstance(v, dict) else None
+
+
+def grant_subset_violations(C, P):
+    """4.3.1 (rev 0.2). Returns the list of rule numbers that hold (violations).
+    Both grants have passed 4.1 rule 10. C is within P when the list is empty."""
+    v = []
+    # 1
+    if any(a not in _lst(P, "authorized_actions") for a in _lst(C, "authorized_actions")):
+        v.append(1)
+    # 2
+    if any(a not in _lst(C, "prohibited_actions") for a in _lst(P, "prohibited_actions")):
+        v.append(2)
+    # 3
+    if any(a not in _lst(P, "data_access") for a in _lst(C, "data_access")):
+        v.append(3)
+    # 4
+    if _has_int(P, "max_hops"):
+        p = P["max_hops"]
+        if not _has_int(C, "max_hops") or C["max_hops"] > p - 1:
+            v.append(4)
+    # 5
+    if any(a not in _lst(_obj(P, "delegation"), "allowed") for a in _lst(_obj(C, "delegation"), "allowed")):
+        v.append(5)
+    # 6
+    c_cond = [e for e in _lst(C, "conditional") if isinstance(e, dict)]
+    c_cond_actions = [e.get("action") for e in c_cond]
+    for e in _lst(P, "conditional"):
+        if not isinstance(e, dict):
+            continue
+        a, r = e.get("action"), e.get("requires")  # missing requires is null
+        if a in _lst(C, "prohibited_actions"):
+            continue
+        if a not in _lst(C, "authorized_actions") and a not in c_cond_actions:
+            continue
+        match = [x for x in c_cond if x.get("action") == a]
+        if not match or match[0].get("requires") != r:  # [B4] exact value equality, str or null
+            v.append(6)
+            break
+    # 7
+    p_cond_actions = [e.get("action") for e in _lst(P, "conditional") if isinstance(e, dict)]
+    if any(a not in _lst(P, "authorized_actions") and a not in p_cond_actions for a in c_cond_actions):
+        v.append(7)
+    # 8
+    if _has_int(P, "expiry_height"):
+        if not _has_int(C, "expiry_height") or C["expiry_height"] > P["expiry_height"]:
+            v.append(8)
+    # 9
+    prv = _obj(P, "revocation")
+    if prv is not None:
+        m = prv.get("effective_at")
+        crv = _obj(C, "revocation")
+        ok = False
+        if crv is not None and "effective_at" in crv:
+            ce = crv["effective_at"]
+            if m == "anchor":
+                ok = ce == "anchor"
+            elif m == "delivery_ack":
+                if ce == "anchor":
+                    ok = True
+                elif ce == "delivery_ack":
+                    if _has_int(prv, "ack_window"):
+                        ok = _has_int(crv, "ack_window") and crv["ack_window"] <= prv["ack_window"]
+                    else:
+                        ok = True
+        if not ok:
+            v.append(9)
+    # 10
+    pf = _obj(P, "finality")
+    if pf is not None:
+        cf = _obj(C, "finality")
+        ok = cf is not None
+        if ok and _has_int(pf, "depth"):
+            ok = _has_int(cf, "depth") and cf["depth"] >= pf["depth"]
+        if ok:
+            pt = compact_target(int(pf["max_target_bits"], 16)) if fm(HEX8, pf.get("max_target_bits")) else None
+            if pt is not None:
+                ct = compact_target(int(cf["max_target_bits"], 16)) if fm(HEX8, cf.get("max_target_bits")) else None
+                ok = ct is not None and ct <= pt
+        if not ok:
+            v.append(10)
+    # 11
+    pkeys = [w["public_key_ed25519_b64"] for w in _lst(P, "witnesses")
+             if isinstance(w, dict) and isinstance(w.get("public_key_ed25519_b64"), str)]
+    if pkeys:
+        ckeys = [w["public_key_ed25519_b64"] for w in _lst(C, "witnesses")
+                 if isinstance(w, dict) and isinstance(w.get("public_key_ed25519_b64"), str)]
+        if not ckeys or any(k not in ckeys for k in pkeys):
+            v.append(11)
+    # 12
+    for k in ("privacy", "ordering"):
+        if _sets(P, k):
+            if not _sets(C, k) or not _json_equal(C[k], P[k]):
+                v.append(12)
+                break
+    # 13
+    def unscoped(g):
+        ap = _obj(g, "approval_policy")
+        return ap is not None and ap.get("allow_unscoped") is True
+    if unscoped(C) and not unscoped(P):
+        v.append(13)
+    # 14 never applies in core v0 (section 1); see parent_carries_approvers
+    return v
+
+
+def _json_equal(a, b):
+    """Exact JSON value equality (no bool/int confusion)."""
+    if type(a) is not type(b):
+        return False
+    if isinstance(a, dict):
+        return set(a) == set(b) and all(_json_equal(a[k], b[k]) for k in a)
+    if isinstance(a, list):
+        return len(a) == len(b) and all(_json_equal(x, y) for x, y in zip(a, b))
+    return a == b
+
+
 def grant_subset(child, parent):
-    """GUESS [A10]. 4.3 says the reference's contract_v0.grant_subset is normative
-    and not specified. Returns (is_subset, certain). `certain` is True only when
-    the answer follows from the text alone: identical grants are a subset, and an
-    added authorized action is a widening (4.3 last paragraph)."""
+    """4.3.1: True when the child grant is within the parent grant."""
     if not isinstance(child, dict) or not isinstance(parent, dict):
-        return False, False
-    if canonical(child) == canonical(parent):
-        return True, True
-    ca = child.get("authorized_actions") or []
-    pa = parent.get("authorized_actions") or []
-    if any(a not in pa for a in ca):
-        return False, True
-    ok = True
-    cp = child.get("prohibited_actions") or []
-    if any(a not in cp for a in (parent.get("prohibited_actions") or [])):
-        ok = False
-    pcond = [e.get("action") for e in (parent.get("conditional") or []) if isinstance(e, dict)]
-    for e in (child.get("conditional") or []):
-        if isinstance(e, dict) and e.get("action") not in pcond and e.get("action") not in pa:
-            ok = False
-    def allowed(g):
-        d = g.get("delegation")
-        return (d.get("allowed") or []) if isinstance(d, dict) else []
-    if any(x not in allowed(parent) for x in allowed(child)):
-        ok = False
-    if parent.get("data_access") is not None:
-        cd = child.get("data_access")
-        if cd is None or any(x not in parent["data_access"] for x in cd):
-            ok = False
-    for k in ("max_hops", "expiry_height"):
-        if parent.get(k) is not None:
-            if child.get(k) is None or child[k] > parent[k]:
-                ok = False
-    return ok, False
+        return False
+    return not grant_subset_violations(child, parent)
+
+
+def carries_approvers(c):
+    """Section 1: grant.approval_policy.approvers present and neither null nor []."""
+    g = c.get("grant") if isinstance(c, dict) else None
+    ap = g.get("approval_policy") if isinstance(g, dict) else None
+    if not isinstance(ap, dict) or "approvers" not in ap:
+        return False
+    a = ap["approvers"]
+    return not (a is None or (isinstance(a, list) and not a))
 
 
 # ------------------------------------------------------------ terms (4.2)
@@ -824,9 +969,12 @@ def verify_view(contract, view):
     lb = contract.get("lower_bound") if isinstance(contract, dict) else None
     hs = view.get("headers") if isinstance(view, dict) else None
 
-    # rule 9
-    strict9 = isinstance(hs, list) and is_strict_value(view)
-    if strict9:
+    # rule 9 (rev 0.2) [A16]: only a view that is an object with a headers list
+    # can get view_not_strict; any other view gives chain_view_rejected only
+    strict9 = True
+    if isinstance(view, dict) and isinstance(hs, list):
+        strict9 = is_strict_value(view)
+    if strict9 and isinstance(view, dict) and isinstance(hs, list):
         for h in hs:
             if not (isinstance(h, dict) and is_int(h.get("height")) and fm(HEX160, h.get("hex"))):
                 strict9 = False
@@ -902,10 +1050,12 @@ def body_strict(r):
             if not (isinstance(o["approvals"], list) and all(isinstance(x, dict) for x in o["approvals"])):
                 return False
             for ap in o["approvals"]:
-                s = ap.get("sig_b64") if "sig_b64" in ap else ap.get("signature")
-                raw = b64_canonical(s, 64)
-                if raw is not None and not sig_bytes_strict(raw):
-                    return False
+                # 6.0 (rev 0.1): each of sig_b64 and signature is checked on its own
+                for key in ("sig_b64", "signature"):
+                    if key in ap:
+                        raw = b64_canonical(ap[key], 64)
+                        if raw is not None and not sig_bytes_strict(raw):
+                            return False
     return True
 
 
@@ -1117,6 +1267,7 @@ def settle(contract, events, view, nenrin_records=None, parent=None, parent_supp
     """Returns the eight core fields of 9.1. A field may hold a string starting
     with 'UNASSESSED:' where this implementation cannot decide it from the text."""
     if not isinstance(contract, dict):
+        # 2.1, 9.1 (rev 0.2) [A1]: contract_sha256 is null
         return _out(contract_sha256(contract), {"contract_not_verified"}, set(), [], {}, "n/a",
                     "underspecified", "undetermined")
     csha = contract_sha256(contract)
@@ -1157,15 +1308,14 @@ def settle(contract, events, view, nenrin_records=None, parent=None, parent_supp
         else:
             fail = (not isinstance(parent, dict) or not door(parent)
                     or not door(contract, parent, with_parent=True))
-            certain = True
-            if isinstance(parent, dict) and door(parent) and door(contract):
-                pc = contract.get("parent_contract")
-                if isinstance(pc, dict) and pc.get("contract_id") == parent.get("contract_id"):
-                    _, certain = grant_subset(contract.get("grant"), parent.get("grant"))
             if fail:
                 U.add("parent_narrowing_failed")
-            if not certain:
-                why = "UNASSESSED: depends on contract_v0.grant_subset beyond what 4.3 states (AMBIGUITIES A10)"
+            # [B5] 4.3.1 rule 14 (pinned approvers) is left to the reference: the text
+            # says it never applies in core v0, but only the child is scoped by section 1.
+            # A parent that carries approvers is not decided here.
+            if (isinstance(parent, dict) and carries_approvers(parent) and door(parent)
+                    and door(contract) and not fail):
+                why = "UNASSESSED: parent carries grant.approval_policy.approvers; 4.3.1 rule 14 not defined in core v0 (AMBIGUITIES B5)"
                 for f in ("verdict", "status", "bond_outcome", "deviation_codes", "underspecified_reasons"):
                     unassessed[f] = why
 
@@ -1405,6 +1555,7 @@ def _examine(contract, g, bound, rejected, view_ok, table, tip, halted):
                 survivors.append(r)
             else:
                 disp[r.sha] = "duplicate_dropped"
+    after_collapse = list(survivors)  # 10.1 (rev 0.2) [A22][B6]
     if halted:
         return result
 
@@ -1466,11 +1617,11 @@ def _examine(contract, g, bound, rejected, view_ok, table, tip, halted):
     result["orphan_heights"] = orphans
 
     # 10 grant evaluation
-    D |= walk_grant(contract, g, es, bound)
+    D |= walk_grant(contract, g, es, after_collapse)
     return result
 
 
-def walk_grant(contract, g, es, bound):
+def walk_grant(contract, g, es, after_collapse):
     D = set()
     csha = contract_sha256(contract)
     rv = g.get("revocation") if isinstance(g.get("revocation"), dict) else {}
@@ -1483,7 +1634,9 @@ def walk_grant(contract, g, es, bound):
         if rv.get("effective_at") == "anchor":
             E = r.height
         else:
-            names = {r.body_digest.hex()} | {b.sha for b in bound if b.signing == r.signing}
+            # 10.1 (rev 0.2) [A22]: body digest, or the record_sha256 of a copy still in
+            # the input after 6.4 (a copy 6.4 dropped no longer names it)
+            names = {r.body_digest.hex()} | {b.sha for b in after_collapse if b.signing == r.signing}
             cands = [r.height + rv["ack_window"]]
             cands += [a.height for a in acks if a.obj.get("revocation_sha256") in names]
             E = min(cands)
@@ -1559,7 +1712,7 @@ def walk_grant(contract, g, es, bound):
 def classify_approval(ap, pk, csha, cid, pdg):
     if not isinstance(ap, dict) or pk is None:
         return "forged"
-    sig = ap.get("sig_b64") if "sig_b64" in ap else ap.get("signature")  # [A9]
+    sig = ap.get("sig_b64")  # 10.4 (rev 0.1) [A9]: only sig_b64 is verified
     vuh, nonce, su, acs = ap.get("valid_until_height"), ap.get("nonce"), ap.get("single_use"), ap.get("contract_sha256")
     fields = is_int(vuh) and vuh >= 0 and fm(HEX32, nonce) and isinstance(su, bool)
     if fields and fm(HEX64, acs):
@@ -1582,16 +1735,21 @@ OUT_OF_SCOPE = "UNASSESSED: contract carries a key outside core v0 scope (sectio
 
 
 def out_of_scope(contract):
+    """Section 1 (rev 0.2) [A20]. A key is carried when present with a value other
+    than null; spine and convergence whenever present; approvers null or [] is not
+    carried (the door refuses it)."""
     if not isinstance(contract, dict):
         return False
     req = contract.get("requirements")
     g = contract.get("grant")
-    if isinstance(req, dict) and any(k in req for k in ("spine", "convergence", "admission")):
-        return True
-    if isinstance(g, dict):
-        if "limits" in g:
+    if isinstance(req, dict):
+        if "spine" in req or "convergence" in req:
             return True
-        ap = g.get("approval_policy")
-        if isinstance(ap, dict) and "approvers" in ap:
+        if req.get("admission") is not None:
+            return True
+    if isinstance(g, dict):
+        if g.get("limits") is not None:
+            return True
+        if carries_approvers(contract):
             return True
     return False
