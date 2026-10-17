@@ -1,4 +1,6 @@
-"""Compare eight MUSUBI core fields. Exit 1 for any disagreement or unassessed field."""
+"""Compare eight MUSUBI core fields over every vector in sealed/vectors.
+Usage: compare.py ROOT [OUTPUT_NAME]. Writes compare/OUTPUT_NAME (default comparison.json).
+Exit 1 for any disagreement, unassessed field or missing output; 0 only on full agreement."""
 from pathlib import Path
 import json,sys
 
@@ -25,20 +27,24 @@ def compare(expected,actual):
   if not same:diffs.append({'field':f,'kind':'DISAGREE','expected':e,'actual':a})
  return diffs
 
-def main(root):
+def main(root,name='comparison.json'):
  rows=[]
  for vector in sorted((root/'sealed/vectors').iterdir()):
   if not vector.is_dir():continue
   expected=json.loads((vector/'expected.json').read_text())
-  actual=json.loads((root/'out'/(vector.name+'.json')).read_text())
+  outp=root/'out'/(vector.name+'.json')
+  if not outp.exists():
+   rows.append({'vector':vector.name,'all_eight_agree':False,'diffs':[{'kind':'MISSING_OUTPUT'}]});continue
+  actual=json.loads(outp.read_text())
   diffs=compare(expected,actual)
   rows.append({'vector':vector.name,'all_eight_agree':not diffs,'diffs':diffs})
  (root/'compare').mkdir(exist_ok=True)
- (root/'compare/comparison.json').write_text(json.dumps(rows,indent=2)+'\n')
+ (root/'compare'/name).write_text(json.dumps(rows,indent=2)+'\n')
  agreed=sum(r['all_eight_agree'] for r in rows)
- print(f'vectors {len(rows)}, all eight agree {agreed}')
+ unass=sum(any(d.get('kind')=='UNASSESSED' for d in r['diffs']) for r in rows)
+ print(f'vectors {len(rows)}, all eight agree {agreed}, with an UNASSESSED field {unass}, disagree {len(rows)-agreed-unass}')
  for row in rows:
   for diff in row['diffs']:print(row['vector'],json.dumps(diff,sort_keys=True))
  return 0 if rows and agreed==len(rows) else 1
 
-if __name__=='__main__':raise SystemExit(main(Path(sys.argv[1])))
+if __name__=='__main__':raise SystemExit(main(Path(sys.argv[1]),*sys.argv[2:3]))
