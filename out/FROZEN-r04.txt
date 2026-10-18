@@ -1,0 +1,27 @@
+MUSUBI settle core v0 revision 0.4, separately written implementation, frozen 2026-10-18T17:49:56Z
+Spec: SETTLE_CORE_v0.md and NOTES.md at horizon-shield dd64d0e2 (input/ built by scripts/build_input_r04.sh, listed in INPUT-SHA256SUMS-r04)
+Python 3.14.6, cryptography 49.0.0
+Branch r04-check, parent commit c0f8f4f
+
+The implementation is the revision 0.3 code at c0f8f4f, unchanged (git diff c0f8f4f -- impl is empty). No code was written for revision 0.4.
+No expected.json, vectors/vectors.json or reference code had been opened when this file was written.
+The runner had read the corpus author's #49 comment naming the four newly covered reasons before running. The code was not changed after reading it.
+Commands run (cwd = repo root), in order:
+./scripts/build_input_r04.sh -> wrote INPUT-SHA256SUMS-r04 (443 files)
+./scripts/check_input_clean.sh -> exit 0 (input/ clean: 443 files, no expected.json, no vectors.json)
+python3 impl/test_primitives.py -> exit 0 (Ran 34 tests, OK)
+python3 impl/run_all.py -> exit 0 (wrote 128 vectors). The 123 earlier output files are byte identical (git status shows no change), 5 are new.
+impl/__pycache__ removed before hashing.
+
+impl/ sha256:
+79dcd039a98028012fad62df31837e44cf5229f56b995ce12108c4ee08109d91  ./AMBIGUITIES.md
+d1ce2e9c0f13ff3aabd1670afbb32bc6b02858eb64dc210a831c743d0226113b  ./run_all.py
+1f7b646f172b3b54a626487667f90a1c0ba52dba4c0c34498f000ec0e2ca72fa  ./settle_core.py
+cc6afd3d8b254ffdfa713d26bb931a81fd5c5dbb9eece4d3720c5ddbbe732d50  ./test_primitives.py
+
+New outputs sha256:
+7433b43ec2a9c4dcbddd6dea267f32b09895fa7fd398aa1b702e20c7433fb99b  synth_delivery_ack_without_window.json
+383912391ae15b49907ba6594981d50eddf94880eae5908acb960771127002a9  synth_finality_without_depth.json
+59578c1d947b3f9d0485ebf40ffb2f51c95a68e8fbe22260cf6efeae3dfe8f4d  synth_grant_action_name_invalid.json
+f68e0642eba34119587a5997e77b15b333431baa9ffef331df67ebfeeaf52cc3  synth_too_many_witnesses.json
+a78fc877d5ba47bd9e5c761c05a9057a98b2329795d1f90622829fbc7b8ab6e5  synth_witnesses_32.json
