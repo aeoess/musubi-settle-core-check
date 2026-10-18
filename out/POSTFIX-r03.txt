@@ -1,0 +1,15 @@
+Post-comparison fix to the revision 0.3 implementation, 2026-10-18.
+
+After the r03 freeze (out/FROZEN-r03.txt) and comparison (compare/comparison-r03.json), a review of the frozen code found a runner crash that no vector reaches. With a nonempty approvers list and a conditional entry whose action is [] or {}, out_of_scope called approvers_well_formed before the contract door, and building the set of conditional actions raised TypeError. run_all exited 1 with no output. The contract door alone already refuses such a contract.
+
+Fix: approvers_well_formed now checks each conditional entry (an object whose action is a nonempty string) before building the set, and returns false otherwise, so the contract reaches the door and is refused (contract_not_verified). Two regression tests run the case through run_all.run_one, with a list and with an object as the action.
+
+Commands run (cwd = repo root), after the fix:
+python3 impl/test_primitives.py with the tests only, before the source change -> FAILED (errors=2)
+python3 impl/test_primitives.py -> exit 0 (Ran 34 tests, OK)
+out/*.json removed, python3 impl/run_all.py -> exit 0 (wrote 123 vectors)
+git diff --quiet HEAD -- out/ -> exit 0: all 123 outputs byte identical to the r03 freeze
+python3 compare/compare.py . -> exit 0: vectors 123, all eight agree 123, UNASSESSED 0, disagree 0
+
+The fix changes no output and no comparison result. The repair was proposed by a separate review agent and applied unchanged.
+git tree hash of impl/ after the fix: b64347472d9bb95eac74e6ad9dcd7e64922eaa40

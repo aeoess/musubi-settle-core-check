@@ -900,7 +900,15 @@ def approvers_well_formed(a, conditional):
     strings, each the action of an entry of conditional."""
     if not isinstance(a, list) or not (1 <= len(a) <= 16):
         return False
-    cond = {e.get("action") for e in conditional if isinstance(e, dict)} if isinstance(conditional, list) else set()
+    cond = set()
+    if isinstance(conditional, list):
+        for entry in conditional:
+            if not isinstance(entry, dict):
+                return False
+            action = entry.get("action")
+            if not isinstance(action, str) or not action:
+                return False
+            cond.add(action)
     names, keys = set(), set()
     for e in a:
         if not isinstance(e, dict) or any(k not in ("name", "public_key_ed25519_b64", "actions") for k in e):

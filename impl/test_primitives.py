@@ -405,5 +405,42 @@ class ParentNarrowing(unittest.TestCase):
         self.assertFalse(sc.door(c2, parent, with_parent=True))  # missing contract_id fails
 
 
+
+class MalformedApproverScope(unittest.TestCase):
+    def check_invalid_conditional(self, action):
+        import copy
+        import json
+        from pathlib import Path
+        import tempfile
+        import run_all
+
+        contract = copy.deepcopy(load_vec("synth_baseline", "contract.json"))
+        contract["grant"]["conditional"] = [{"action": "refund"}, {"action": action}]
+        contract["grant"]["approval_policy"] = {"approvers": [{
+            "name": "reviewer",
+            "public_key_ed25519_b64": contract["parties"][0]["public_key_ed25519_b64"],
+            "actions": ["refund"],
+        }]}
+        with tempfile.TemporaryDirectory() as tmp:
+            vector = Path(tmp) / "invalid"
+            vector.mkdir()
+            (vector / "contract.json").write_text(json.dumps(contract))
+            (vector / "view.json").write_text(json.dumps(load_vec("synth_baseline", "view.json")))
+            old_vectors = run_all.VEC
+            try:
+                run_all.VEC = tmp
+                result = run_all.run_one("invalid")
+            finally:
+                run_all.VEC = old_vectors
+        self.assertEqual(result["underspecified_reasons"], ["contract_not_verified"])
+        self.assertFalse(any(isinstance(value, str) and value.startswith("UNASSESSED")
+                             for value in result.values()))
+
+    def test_list_conditional_action_is_refused(self):
+        self.check_invalid_conditional([])
+
+    def test_object_conditional_action_is_refused(self):
+        self.check_invalid_conditional({})
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
