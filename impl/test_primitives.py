@@ -222,10 +222,56 @@ class Rev02Reading(unittest.TestCase):
         self.assertTrue(sc.out_of_scope({"requirements": {"convergence": None}}))
         self.assertFalse(sc.out_of_scope({"grant": {"approval_policy": {"approvers": []}}}))
         self.assertFalse(sc.out_of_scope({"grant": {"approval_policy": {"approvers": None}}}))
-        self.assertTrue(sc.out_of_scope({"grant": {"approval_policy": {"approvers": ["x"]}}}))
+        # rev 0.3 [B7]: only a well formed approver list is carried
+        self.assertFalse(sc.out_of_scope({"grant": {"approval_policy": {"approvers": ["x"]}}}))
+        for bad in ({}, "", 0):
+            self.assertFalse(sc.out_of_scope({"grant": {"approval_policy": {"approvers": bad}}}))
         c = load_vec("synth_ordering_empty_object", "contract.json")
         c["grant"]["approval_policy"] = {"approvers": []}
         self.assertFalse(sc.door(c))
+
+    def test_approvers_well_formed_4_1_rule_10(self):
+        k1 = "A" * 43 + "="
+        k2 = "B" * 42 + "A="
+        cond = [{"action": "refund"}, {"action": "void", "requires": "x"}]
+        e1 = {"name": "a", "public_key_ed25519_b64": k1, "actions": ["refund"]}
+        e2 = {"name": "b", "public_key_ed25519_b64": k2, "actions": ["refund", "void"]}
+        ok = sc.approvers_well_formed
+        self.assertTrue(ok([e1], cond))
+        self.assertTrue(ok([e1, e2], cond))
+        self.assertTrue(ok([dict(e1, name="n%d" % i, public_key_ed25519_b64=sc.base64.b64encode(bytes([i]) * 32).decode())
+                            for i in range(16)], cond))
+        self.assertFalse(ok([dict(e1, name="n%d" % i, public_key_ed25519_b64=sc.base64.b64encode(bytes([i]) * 32).decode())
+                             for i in range(17)], cond))
+        self.assertFalse(ok([], cond))
+        self.assertFalse(ok([e1], None))                                   # actions must be in conditional
+        self.assertFalse(ok([dict(e1, actions=["other"])], cond))
+        self.assertFalse(ok([dict(e1, actions=[])], cond))
+        self.assertFalse(ok([dict(e1, actions=["refund", "refund"])], cond))
+        self.assertFalse(ok([dict(e1, extra=1)], cond))
+        self.assertFalse(ok([{k: v for k, v in e1.items() if k != "actions"}], cond))  # [C1]
+        self.assertFalse(ok([dict(e1, name="")], cond))
+        self.assertFalse(ok([dict(e1, public_key_ed25519_b64="A" * 43)], cond))    # not canonical
+        self.assertFalse(ok([e1, dict(e2, name="a")], cond))               # names unique
+        self.assertFalse(ok([e1, dict(e2, public_key_ed25519_b64=k1)], cond))  # keys unique
+
+    def test_rule_14_pinned_approvers_4_3_1(self):
+        k1 = "A" * 43 + "="
+        e1 = {"name": "a", "public_key_ed25519_b64": k1, "actions": ["refund"]}
+        P = {"approval_policy": {"approvers": [e1]}}
+        self.assertIn(14, sc.grant_subset_violations({}, P))
+        self.assertIn(14, sc.grant_subset_violations({"approval_policy": {}}, P))
+        self.assertNotIn(14, sc.grant_subset_violations({"approval_policy": {"approvers": [dict(e1)]}}, P))
+        self.assertNotIn(14, sc.grant_subset_violations({}, {}))
+
+    def test_nonfinite_spellings_2_2_b8(self):
+        for bad in ("nan", "+Infinity", "infinity", "[nan]", "-nan"):
+            with self.assertRaises(sc.InputError):
+                sc.parse_json(bad)
+        self.assertEqual(sc.parse_json("1e400"), float("inf"))
+        self.assertEqual(sc.parse_json("-1e400"), float("-inf"))
+        self.assertFalse(sc.is_strict_value({"x": sc.parse_json("1e400")}))
+        self.assertEqual(sc.canonical([1.5, 1e16, 1.0]), b"[1.5,1e+16,1.0]")  # 3.1 item 6
 
     def test_view_not_strict_only_for_object_with_list_5_1_rule_9(self):
         c = load("c.AB.json")

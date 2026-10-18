@@ -109,7 +109,9 @@ class _Parser:
         if t.startswith("null", self.i):
             self.i += 4
             return None
-        # 2.2 (rev 0.2) [A15][A12]: these tokens are read as non-integer numbers
+        # 2.2 (rev 0.2, 0.3) [A15][A12][B8]: exactly these three spellings, case
+        # sensitive, are read as non-integer numbers. nan, +Infinity, infinity fall
+        # through to number() and are a parse error. 1e400 becomes float inf there.
         if t.startswith("NaN", self.i):
             self.i += 3
             return float("nan")
@@ -294,11 +296,8 @@ def _canon(v, out, depth):
         except ValueError:
             raise CanonError("integer too long to write out")
     elif isinstance(v, float):
-        # [A2] not defined by 3.1; NOTES N4 says the reference writes repr().
-        # [B2] NaN and the infinities are now numbers (2.2). They are written
-        # NaN, Infinity, -Infinity (the tokens 2.2 reads), not repr's nan/inf:
-        # the contractor signature in synth_nan_in_signed_body/events/e00.json
-        # verifies only over that form.
+        # 3.1 item 6 (rev 0.3) [A2][B2]: NaN, Infinity, -Infinity, and a finite
+        # float as Python's repr. Not nan, not null.
         if v != v:
             out.append("NaN")
         elif v == float("inf"):
@@ -681,8 +680,10 @@ def door(c, parent=None, with_parent=False):
             return False
         if "allow_unscoped" in v and not isinstance(v["allow_unscoped"], bool):
             return False
-        # section 1 (rev 0.2) [A20]: approvers set to null or [] refuses the contract
-        if "approvers" in v and (v["approvers"] is None or (isinstance(v["approvers"], list) and not v["approvers"])):
+        # 4.1 rule 10 and section 1 (rev 0.3) [A20][B7]: approvers, when present,
+        # must be a well formed approver list. Any other value, null and [] included,
+        # refuses the contract.
+        if "approvers" in v and not approvers_well_formed(v["approvers"], g.get("conditional")):
             return False
     v = g.get("revocation")
     if v is not None:
@@ -861,7 +862,15 @@ def grant_subset_violations(C, P):
         return ap is not None and ap.get("allow_unscoped") is True
     if unscoped(C) and not unscoped(P):
         v.append(13)
-    # 14 never applies in core v0 (section 1); see parent_carries_approvers
+    # 14 (rev 0.3) [B5][C3]: the pinned approvers differ. Each side's
+    # approval_policy.approvers, the empty list when absent, compared as sets of
+    # canonical entries (canonical form of each entry object, 3.1).
+    def pinned(g):
+        ap = _obj(g, "approval_policy")
+        a = ap.get("approvers") if ap is not None else None
+        return {canonical(e) for e in a} if isinstance(a, list) else set()
+    if pinned(C) != pinned(P):
+        v.append(14)
     return v
 
 
@@ -883,14 +892,44 @@ def grant_subset(child, parent):
     return not grant_subset_violations(child, parent)
 
 
+def approvers_well_formed(a, conditional):
+    """4.1 rule 10 (rev 0.3) [B7][C1][C2]: a list of 1 to 16 objects, each with keys
+    only from name, public_key_ed25519_b64 and actions, all three required: a
+    non-empty string name, a canonical 32 byte public_key_ed25519_b64, names and keys
+    unique across the list, and actions a non-empty list of distinct non-empty
+    strings, each the action of an entry of conditional."""
+    if not isinstance(a, list) or not (1 <= len(a) <= 16):
+        return False
+    cond = {e.get("action") for e in conditional if isinstance(e, dict)} if isinstance(conditional, list) else set()
+    names, keys = set(), set()
+    for e in a:
+        if not isinstance(e, dict) or any(k not in ("name", "public_key_ed25519_b64", "actions") for k in e):
+            return False
+        n, k, acts = e.get("name"), e.get("public_key_ed25519_b64"), e.get("actions")
+        if not isinstance(n, str) or not n:
+            return False
+        if b64_canonical(k, 32) is None:
+            return False
+        if n in names or k in keys:
+            return False
+        names.add(n)
+        keys.add(k)
+        if not list_of_nonempty_str(acts) or not acts or len(set(acts)) != len(acts):
+            return False
+        if any(x not in cond for x in acts):
+            return False
+    return True
+
+
 def carries_approvers(c):
-    """Section 1: grant.approval_policy.approvers present and neither null nor []."""
+    """Section 1 (rev 0.3) [B7]: grant.approval_policy.approvers is carried only when
+    it is a well formed approver list (4.1 rule 10). Any other present value is not
+    carried, and the door refuses it."""
     g = c.get("grant") if isinstance(c, dict) else None
     ap = g.get("approval_policy") if isinstance(g, dict) else None
     if not isinstance(ap, dict) or "approvers" not in ap:
         return False
-    a = ap["approvers"]
-    return not (a is None or (isinstance(a, list) and not a))
+    return approvers_well_formed(ap["approvers"], g.get("conditional"))
 
 
 # ------------------------------------------------------------ terms (4.2)
@@ -1310,14 +1349,8 @@ def settle(contract, events, view, nenrin_records=None, parent=None, parent_supp
                     or not door(contract, parent, with_parent=True))
             if fail:
                 U.add("parent_narrowing_failed")
-            # [B5] 4.3.1 rule 14 (pinned approvers) is left to the reference: the text
-            # says it never applies in core v0, but only the child is scoped by section 1.
-            # A parent that carries approvers is not decided here.
-            if (isinstance(parent, dict) and carries_approvers(parent) and door(parent)
-                    and door(contract) and not fail):
-                why = "UNASSESSED: parent carries grant.approval_policy.approvers; 4.3.1 rule 14 not defined in core v0 (AMBIGUITIES B5)"
-                for f in ("verdict", "status", "bond_outcome", "deviation_codes", "underspecified_reasons"):
-                    unassessed[f] = why
+            # 4.3.1 rule 14 (rev 0.3) [B5]: a parent that pins approvers is decided by
+            # grant_subset_violations rule 14. The old UNASSESSED guard is gone.
 
     # 5.1
     view_ok, strict9, table, tip = verify_view(contract, view)
@@ -1735,9 +1768,9 @@ OUT_OF_SCOPE = "UNASSESSED: contract carries a key outside core v0 scope (sectio
 
 
 def out_of_scope(contract):
-    """Section 1 (rev 0.2) [A20]. A key is carried when present with a value other
-    than null; spine and convergence whenever present; approvers null or [] is not
-    carried (the door refuses it)."""
+    """Section 1 (rev 0.2, 0.3) [A20][B7]. A key is carried when present with a value
+    other than null. Spine and convergence are carried whenever present. Approvers are
+    carried only as a well formed approver list (any other value is refused by the door)."""
     if not isinstance(contract, dict):
         return False
     req = contract.get("requirements")

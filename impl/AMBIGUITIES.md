@@ -127,3 +127,30 @@ Strip with `str.strip()` (every character for which Python's `str.isspace()` is 
 
 B10. 4.3.1 rule 12, equality of `privacy` and `ordering`.
 Exact JSON value equality, with types compared (an object is equal only to an object with the same keys and equal values). `{}` and `{"same_height": null}` are therefore unequal, as the text says.
+
+## Revision 0.3
+
+Written against SETTLE_CORE_v0.md and NOTES.md at horizon-shield commit aea731eb (revision 0.3), the vector inputs, and nothing else. No expected output and no reference code was read before the freeze.
+
+Resolved by revision 0.3. The revised text now states these, and the code follows the text:
+
+- B2: 3.1 item 6 writes a non-integer number as Python's json module does, `NaN`, `Infinity`, `-Infinity`, and a finite float as `repr`. This was already the code's reading. Only the comment changed.
+- B5: 4.3.1 rule 14 now applies in core v0. The parent's and the child's `approval_policy.approvers`, each the empty list when absent, are compared as sets of canonical entries. A parent that pins approvers and a child with none fail narrowing (`parent_narrowing_failed`). The UNASSESSED guard for such a parent is removed.
+- B7: section 1 and 4.1 rule 10 now say only a well formed approver list is carried. Any other value that is present, `{}`, `""`, `0`, null and `[]` included, refuses the contract in 4.1. The code no longer treats those values as out of scope.
+- B8: 2.2 now names exactly `NaN`, `Infinity` and `-Infinity`, case sensitive, says `nan`, `+Infinity` and `infinity` stop the reader, and reads a number too large for a double (`1e400`) as an infinity. This was already the code's reading. Only the comment changed, and tests were added.
+
+NOTES.md N15 reports that B1, B3, B4, B9 and B10 were the reference's reading, and that B6 agrees with every vector but is not yet separated by one. The code is unchanged for those.
+
+New choices where the revised text still leaves one:
+
+C1. 4.1 rule 10, which keys an approver entry must have.
+The text says each entry has "keys only from `name`, `public_key_ed25519_b64` and `actions`", then states a requirement for each of the three. The code reads all three as required, so an entry without `actions` (or without `name` or the key) refuses the contract.
+
+C2. 4.1 rule 10, "a canonical 32 byte `public_key_ed25519_b64`".
+Read as the same check the code applies to witness keys: canonical base64 that decodes to exactly 32 bytes. The key is not checked to be a valid Ed25519 point. Keys are compared for uniqueness as strings, which for canonical base64 is the same as comparing the bytes.
+
+C3. 4.3.1 rule 14, "compared as sets of canonical entries".
+Each entry is written in canonical form (3.1) and the two sets of byte strings are compared. Entry order in the list does not matter, but the order of the `actions` list inside an entry does, because canonical form keeps list order. In core v0 this difference cannot show: a child that carries approvers is out of scope, so the comparison is only ever between the parent's list and the empty list.
+
+C4. 4.1 rule 10, "each the `action` of an entry of `conditional`".
+When `conditional` is absent or null there is no such entry, so any approver list refuses the contract.
