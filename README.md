@@ -39,7 +39,7 @@ Revision 0.3:
 ```
 ./scripts/build_input_r03.sh    # clones the corpus at aea731eb, builds input/ and sealed/, checks INPUT-SHA256SUMS-r03
 ./scripts/check_input_clean.sh  # input/ holds no expected.json or vectors.json
-python3 impl/test_primitives.py # 32 primitive tests
+python3 impl/test_primitives.py # 34 primitive tests (32 at the r03 freeze, 2 added by the fix in out/POSTFIX-r03.txt)
 python3 impl/run_all.py         # writes out/<vector>.json (overwrites the frozen copies, compare with git diff)
 python3 compare/compare.py . comparison-r03.json   # exits 1 on any disagreement, UNASSESSED field or missing output
 ```
